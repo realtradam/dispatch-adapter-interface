@@ -9,7 +9,8 @@ Gem::Specification.new do |spec|
   spec.email = ["github@tradam.dev"]
 
   spec.summary = "Shared interface for Dispatch LLM adapter gems"
-  spec.description = "Defines the base class, data structs, and error hierarchy shared by all " \
+  spec.description = "Defines the base class, data structs, error hierarchy, and shared utilities " \
+                     "(RateLimiter, UsageReport, cache-control, thinking blocks) used by all " \
                      "Dispatch adapter gems (Copilot, Claude, Tester, etc.)."
   spec.homepage = "https://github.com/realtradam/dispatch-adapter-interface"
   spec.license = "MIT"

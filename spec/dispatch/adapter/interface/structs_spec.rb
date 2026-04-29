@@ -22,6 +22,28 @@ RSpec.describe Dispatch::Adapter do
       expect(block.type).to eq("text")
       expect(block.text).to eq("hello")
     end
+
+    it "defaults cache_control to nil" do
+      block = Dispatch::Adapter::TextBlock.new(text: "hello")
+      expect(block.cache_control).to be_nil
+    end
+
+    it "accepts cache_control with ttl" do
+      block = Dispatch::Adapter::TextBlock.new(text: "x", cache_control: { type: :ephemeral, ttl: :"1h" })
+      expect(block.cache_control[:ttl]).to eq(:"1h")
+    end
+
+    it "accepts cache_control without ttl" do
+      block = Dispatch::Adapter::TextBlock.new(text: "x", cache_control: { type: :ephemeral })
+      expect(block.cache_control[:type]).to eq(:ephemeral)
+      expect(block.cache_control[:ttl]).to be_nil
+    end
+
+    it "serializes cache_control via to_h" do
+      block = Dispatch::Adapter::TextBlock.new(text: "y", cache_control: { type: :ephemeral, ttl: :"5m" })
+      h = block.to_h
+      expect(h[:cache_control]).to eq({ type: :ephemeral, ttl: :"5m" })
+    end
   end
 
   describe "ImageBlock" do
@@ -69,6 +91,36 @@ RSpec.describe Dispatch::Adapter do
       expect(td.description).to eq("Search the web")
       expect(td.parameters).to be_a(Hash)
     end
+
+    it "defaults cache_control to nil" do
+      td = Dispatch::Adapter::ToolDefinition.new(
+        name: "search",
+        description: "Search",
+        parameters: {}
+      )
+      expect(td.cache_control).to be_nil
+    end
+
+    it "accepts cache_control" do
+      td = Dispatch::Adapter::ToolDefinition.new(
+        name: "search",
+        description: "Search",
+        parameters: {},
+        cache_control: { type: :ephemeral }
+      )
+      expect(td.cache_control).to eq({ type: :ephemeral })
+    end
+
+    it "serializes cache_control via to_h" do
+      td = Dispatch::Adapter::ToolDefinition.new(
+        name: "lookup",
+        description: "Look up",
+        parameters: {},
+        cache_control: { type: :ephemeral, ttl: :"1h" }
+      )
+      h = td.to_h
+      expect(h[:cache_control]).to eq({ type: :ephemeral, ttl: :"1h" })
+    end
   end
 
   describe "Response" do
@@ -114,6 +166,59 @@ RSpec.describe Dispatch::Adapter do
       expect(usage.cache_read_tokens).to eq(10)
       expect(usage.cache_creation_tokens).to eq(5)
     end
+
+    it "defaults reasoning_tokens to 0" do
+      usage = Dispatch::Adapter::Usage.new(input_tokens: 100, output_tokens: 50)
+      expect(usage.reasoning_tokens).to eq(0)
+    end
+
+    it "defaults premium_requests to nil" do
+      usage = Dispatch::Adapter::Usage.new(input_tokens: 100, output_tokens: 50)
+      expect(usage.premium_requests).to be_nil
+    end
+
+    it "defaults cost to nil" do
+      usage = Dispatch::Adapter::Usage.new(input_tokens: 100, output_tokens: 50)
+      expect(usage.cost).to be_nil
+    end
+
+    it "accepts a UsageCost for cost" do
+      cost = Dispatch::Adapter::UsageCost.new(input: 0.01, output: 0.02, total: 0.03)
+      usage = Dispatch::Adapter::Usage.new(input_tokens: 100, output_tokens: 50, cost: cost)
+      expect(usage.cost).to be_a(Dispatch::Adapter::UsageCost)
+      expect(usage.cost.total).to eq(0.03)
+    end
+
+    it "accepts reasoning_tokens and premium_requests" do
+      usage = Dispatch::Adapter::Usage.new(
+        input_tokens: 100,
+        output_tokens: 50,
+        reasoning_tokens: 30,
+        premium_requests: 2.5
+      )
+      expect(usage.reasoning_tokens).to eq(30)
+      expect(usage.premium_requests).to eq(2.5)
+    end
+  end
+
+  describe "UsageCost" do
+    it "defaults all fields to 0.0" do
+      cost = Dispatch::Adapter::UsageCost.new
+      expect(cost.input).to eq(0.0)
+      expect(cost.output).to eq(0.0)
+      expect(cost.cache_read).to eq(0.0)
+      expect(cost.cache_write).to eq(0.0)
+      expect(cost.total).to eq(0.0)
+    end
+
+    it "accepts keyword args" do
+      cost = Dispatch::Adapter::UsageCost.new(input: 0.005, output: 0.015, total: 0.02)
+      expect(cost.input).to eq(0.005)
+      expect(cost.output).to eq(0.015)
+      expect(cost.cache_read).to eq(0.0)
+      expect(cost.cache_write).to eq(0.0)
+      expect(cost.total).to eq(0.02)
+    end
   end
 
   describe "StreamDelta" do
@@ -135,6 +240,24 @@ RSpec.describe Dispatch::Adapter do
       delta = Dispatch::Adapter::StreamDelta.new(type: :tool_use_delta, tool_call_id: "1", argument_delta: '{"q":')
       expect(delta.type).to eq(:tool_use_delta)
       expect(delta.argument_delta).to eq('{"q":')
+    end
+
+    it "creates a thinking_start" do
+      delta = Dispatch::Adapter::StreamDelta.new(type: :thinking_start)
+      expect(delta.type).to eq(:thinking_start)
+      expect(delta.text).to be_nil
+    end
+
+    it "creates a thinking_delta with text payload" do
+      delta = Dispatch::Adapter::StreamDelta.new(type: :thinking_delta, text: "I am reasoning about this")
+      expect(delta.type).to eq(:thinking_delta)
+      expect(delta.text).to eq("I am reasoning about this")
+    end
+
+    it "creates a thinking_end" do
+      delta = Dispatch::Adapter::StreamDelta.new(type: :thinking_end)
+      expect(delta.type).to eq(:thinking_end)
+      expect(delta.text).to be_nil
     end
   end
 
@@ -180,6 +303,51 @@ RSpec.describe Dispatch::Adapter do
         supports_streaming: true
       )
       expect(info.premium_request_multiplier).to be_nil
+    end
+  end
+
+  describe "ThinkingBlock" do
+    it "defaults type to 'thinking'" do
+      block = Dispatch::Adapter::ThinkingBlock.new(thinking: "Let me consider this...")
+      expect(block.type).to eq("thinking")
+      expect(block.thinking).to eq("Let me consider this...")
+      expect(block.signature).to be_nil
+    end
+
+    it "accepts an optional signature" do
+      block = Dispatch::Adapter::ThinkingBlock.new(thinking: "deep thought", signature: "abc123")
+      expect(block.signature).to eq("abc123")
+    end
+
+    it "serializes correctly via to_h" do
+      block = Dispatch::Adapter::ThinkingBlock.new(thinking: "analysis", signature: "sig42")
+      h = block.to_h
+      expect(h[:type]).to eq("thinking")
+      expect(h[:thinking]).to eq("analysis")
+      expect(h[:signature]).to eq("sig42")
+    end
+
+    it "serializes with nil signature via to_h" do
+      block = Dispatch::Adapter::ThinkingBlock.new(thinking: "just thinking")
+      h = block.to_h
+      expect(h[:type]).to eq("thinking")
+      expect(h[:thinking]).to eq("just thinking")
+      expect(h[:signature]).to be_nil
+    end
+  end
+
+  describe "RedactedThinkingBlock" do
+    it "defaults type to 'redacted_thinking'" do
+      block = Dispatch::Adapter::RedactedThinkingBlock.new(data: "base64encodeddata==")
+      expect(block.type).to eq("redacted_thinking")
+      expect(block.data).to eq("base64encodeddata==")
+    end
+
+    it "serializes correctly via to_h" do
+      block = Dispatch::Adapter::RedactedThinkingBlock.new(data: "encodedblob")
+      h = block.to_h
+      expect(h[:type]).to eq("redacted_thinking")
+      expect(h[:data]).to eq("encodedblob")
     end
   end
 
