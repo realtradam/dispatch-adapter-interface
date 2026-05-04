@@ -3,11 +3,12 @@
 module Dispatch
   module Adapter
     class Error < StandardError
-      attr_reader :status_code, :provider
+      attr_reader :status_code, :provider, :response_body
 
-      def initialize(message = nil, status_code: nil, provider: nil)
+      def initialize(message = nil, status_code: nil, provider: nil, response_body: nil)
         @status_code = status_code
         @provider = provider
+        @response_body = response_body
         super(message)
       end
     end
@@ -17,9 +18,9 @@ module Dispatch
     class RateLimitError < Error
       attr_reader :retry_after
 
-      def initialize(message = nil, status_code: nil, provider: nil, retry_after: nil)
+      def initialize(message = nil, status_code: nil, provider: nil, retry_after: nil, response_body: nil)
         @retry_after = retry_after
-        super(message, status_code:, provider:)
+        super(message, status_code:, provider:, response_body:)
       end
     end
 
